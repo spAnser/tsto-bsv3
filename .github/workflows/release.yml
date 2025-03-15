@@ -1,0 +1,56 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+env:
+  CRATE_NAME: bsv3
+  GITHUB_TOKEN: ${{ github.token }}
+  RUST_BACKTRACE: 1
+  LIB: ./SDL2/
+
+jobs:
+  release:
+    name: ${{ matrix.platform.os-name }} with rust ${{ matrix.toolchain }}
+    runs-on: ${{ matrix.platform.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os-name: Windows-x86_64
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: bsv3.exe
+            name: bsv3-Windows-x86_64.zip
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+      #      - name: Run tests
+      #        uses: houseabsolute/actions-rust-cross@v1
+      #        with:
+      #          command: "test"
+      #          target: ${{ matrix.platform.target }}
+      #          toolchain: ${{ matrix.toolchain }}
+      #          args: "--locked --release"
+      #        if: ${{ !matrix.platform.skip-tests }}
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: "build"
+          target: ${{ matrix.platform.target }}
+          toolchain: ${{ matrix.toolchain }}
+          args: "--locked --release"
+          strip: true
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
+        with:
+          executable-name: bsv3
+          target: ${{ matrix.platform.target }}
+          extra-files: |
+            SDL2/SDL2.dll
+            building.bsv3
+            building.rgb
+          changes-file: ""
+        if: matrix.toolchain == 'stable'

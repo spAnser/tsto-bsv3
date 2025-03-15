@@ -1,0 +1,114 @@
+//------------------------------------------------
+//--- 010 Editor v15.0.1 Binary Template
+//
+//      File: bsv3.bt
+//   Authors: spAnser
+//   Version: v1.0.0
+//   Purpose: Tapped Out SBTP
+//  Category: Misc
+// File Mask: *.bsv3
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+LittleEndian();
+SetBytesPerLine(32);
+
+short format <format=hex>;
+
+if (format == 0x0104) {
+    FSkip(3);
+}
+
+if (format == 0x0303) {
+    float unk0;
+}
+
+ushort spriteCount;
+
+byte hasAlpha;
+
+if (format == 0x0203) {
+    byte imageNameSize;
+    char imageName[imageNameSize];
+}
+
+typedef struct {
+    byte nameSize <bgcolor=cDkBlue>;
+    char name[nameSize] <bgcolor=cLtBlue>;
+    ushort x <bgcolor=cGray>;
+    ushort y <bgcolor=cDkGreen>;
+    ushort width <bgcolor=cGray>;
+    ushort height <bgcolor=cDkGreen>;
+} Sprite <optimize=false,read=SpriteRead>;
+
+string SpriteRead (Sprite &s) {
+    return Str("%s | loc = %d x %d | size = %d x %d", s.name, s.x, s.y, s.width, s.height);
+};
+
+Sprite sprite[spriteCount];
+
+typedef struct {
+    ushort sprite;
+    float x;
+    float y;
+    float scaleX;
+    float skewV;
+    float skewH;
+    float scaleY;
+    
+    if (hasAlpha == 1) {
+        ubyte alpha;
+    }
+} Layer <optimize=false,read=LayerRead>;
+
+string LayerRead (Layer &s) {
+    return Str("%03d | %s | loc = %f x %f | %f, %f, %f, %f", s.sprite, sprite[s.sprite].name, s.x, s.y, s.scaleX, s.skewH, s.skewV, s.scaleY);
+}
+
+typedef struct {
+    if (format == 0x0303) {
+        Layer layer;
+    } else if (format == 0x0103 || format == 0x0203) {
+        ushort layerCount;
+        FSkip(1);
+        Layer layer[layerCount];
+    }
+} Frame <optimize=false>;
+
+typedef struct {
+    byte nameSize <bgcolor=cDkBlue>;
+    char name[nameSize] <bgcolor=cLtBlue>;
+    ushort start;
+    ushort end;
+} Anim <optimize=false,read=AnimRead>;
+
+string AnimRead (Anim &s) {
+    return s.name;
+};
+
+typedef struct {
+    ushort numFrames;
+    byte unk;
+    ushort frames[numFrames];
+} Group <optimize=false,read=GroupRead>;
+
+string GroupRead (Group &g) {
+    return Str("%d | numFrames = %d", g.unk, g.numFrames);
+};
+
+
+if (format == 0x0303) {
+    ushort numGroups;
+    ushort numFrames;
+    Frame frame[numFrames];
+    Group group[numGroups];
+} else {
+    ushort numFrames;
+    Frame frame[numFrames];
+}
+
+if (format == 0x0303) {
+}
+
+ushort animCount;
+Anim anim[animCount];

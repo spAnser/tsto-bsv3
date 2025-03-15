@@ -1,0 +1,17 @@
+[package]
+name = "tsto-bsv3"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "bsv3"
+path = "src/main.rs"
+
+[dependencies]
+tetra = "0.8"
+colored = "3"
+png = "0.17"
+image = "0.25.1"
+delaunator = "1.0.2"
