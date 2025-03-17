@@ -7,7 +7,9 @@ use crate::ea::rgb::{la88_to_rgba8888, rgba4444_to_rgba8888};
 use colored::Colorize;
 use delaunator::{triangulate, Point};
 use std::collections::HashMap;
-use tetra::graphics::mesh::{BufferUsage, IndexBuffer, Mesh, Vertex, VertexBuffer};
+use tetra::graphics::mesh::{
+    BufferUsage, IndexBuffer, Mesh, Vertex, VertexBuffer,
+};
 use tetra::graphics::text::{Font, Text};
 use tetra::graphics::{
     self, BlendState, Canvas, Color, DrawParams, FilterMode, Texture, TextureFormat,
@@ -25,8 +27,13 @@ const CANVAS_SIZE: f32 = 2048.0;
 const CANVAS_HALF: f32 = CANVAS_SIZE / 2.0;
 const DEBUG_LAYERS: bool = false;
 const GREEN_BG: bool = false;
+const SAVE_CANVAS: bool = false;
 
 fn main() -> Result<(), TetraError> {
+    if SAVE_CANVAS {
+        std::fs::create_dir_all("pngs").unwrap();
+    }
+
     ContextBuilder::new("TSTO BSV3", WINDOW_WIDTH as i32, WINDOW_HEIGHT as i32)
         .quit_on_escape(true)
         .show_mouse(true)
@@ -71,12 +78,20 @@ impl GameState {
 
     fn save_canvas(&mut self, ctx: &mut Context) {
         let tex_data = self.clip_canvas.texture().get_data(ctx);
-        image::save_buffer(
-            format!("test_{}.png", self.scene.timer),
+
+        let index = self.scene.get_index();
+        let png_path = format!("pngs/{}_{:03}.png", self.scene.bsv3.file.name, index);
+        if std::path::Path::new(&png_path).exists() {
+            return;
+        }
+
+        image::save_buffer_with_format(
+            png_path,
             &tex_data.as_bytes(),
             CANVAS_SIZE as u32,
             CANVAS_SIZE as u32,
             image::ColorType::Rgba8,
+            image::ImageFormat::Png,
         )
         .unwrap();
     }
@@ -414,6 +429,17 @@ impl Scene {
         )
     }
 
+    fn get_index(&self) -> usize {
+        let start = self.bsv3.animations[self.animation].start as usize;
+        let end = self.bsv3.animations[self.animation].end as usize;
+        let mut index = start;
+        if start != end {
+            index = start + self.timer % (end - start);
+        }
+
+        index
+    }
+
     fn draw(&mut self, ctx: &mut Context) -> Canvas {
         let canvas_width = CANVAS_SIZE;
         let canvas_height = CANVAS_SIZE;
@@ -427,12 +453,7 @@ impl Scene {
         }
         graphics::set_canvas(ctx, &canvas);
 
-        let start = self.bsv3.animations[self.animation].start as usize;
-        let end = self.bsv3.animations[self.animation].end as usize;
-        let mut index = start;
-        if start != end {
-            index = start + self.timer % (end - start);
-        }
+        let index = self.get_index();
 
         self.timer += 1;
 
@@ -526,6 +547,10 @@ impl State for GameState {
         }
 
         self.clip_canvas = self.scene.draw(ctx);
+
+        if SAVE_CANVAS {
+            self.save_canvas(ctx);
+        }
 
         Ok(())
     }
