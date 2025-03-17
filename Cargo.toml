@@ -12,6 +12,5 @@ path = "src/main.rs"
 [dependencies]
 tetra = "0.8"
 colored = "3"
-png = "0.17"
 image = "0.25.1"
 delaunator = "1.0.2"
