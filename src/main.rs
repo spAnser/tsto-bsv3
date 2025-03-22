@@ -7,9 +7,7 @@ use crate::ea::rgb::{la88_to_rgba8888, rgba4444_to_rgba8888};
 use colored::Colorize;
 use delaunator::{triangulate, Point};
 use std::collections::HashMap;
-use tetra::graphics::mesh::{
-    BufferUsage, IndexBuffer, Mesh, Vertex, VertexBuffer,
-};
+use tetra::graphics::mesh::{BufferUsage, IndexBuffer, Mesh, Vertex, VertexBuffer};
 use tetra::graphics::text::{Font, Text};
 use tetra::graphics::{
     self, BlendState, Canvas, Color, DrawParams, FilterMode, Texture, TextureFormat,
@@ -26,7 +24,6 @@ const WINDOW_HEIGHT: f32 = 1024.0 + 256.0;
 const CANVAS_SIZE: f32 = 2048.0;
 const CANVAS_HALF: f32 = CANVAS_SIZE / 2.0;
 const DEBUG_LAYERS: bool = false;
-const GREEN_BG: bool = false;
 const SAVE_CANVAS: bool = false;
 
 fn main() -> Result<(), TetraError> {
@@ -98,6 +95,7 @@ impl GameState {
 }
 
 struct Scene {
+    green_bg: bool,
     bsv3: BSV3,
     texture: Texture,
     timer: usize,
@@ -105,6 +103,7 @@ struct Scene {
     offset_x: f32,
     offset_y: f32,
     animation: usize,
+    always_draw_animations: Vec<usize>,
     frames: HashMap<String, (Mesh, Mat4<f32>)>,
     font: Font,
 }
@@ -113,6 +112,7 @@ impl Scene {
     fn new(ctx: &mut Context, file_path: &str, font: Font) -> Result<Scene, TetraError> {
         if file_path.is_empty() {
             return Ok(Scene {
+                green_bg: false,
                 bsv3: BSV3::new(String::from("")),
                 texture: Texture::from_data(ctx, 0, 0, TextureFormat::R8, &*vec![])?,
                 timer: 0,
@@ -120,6 +120,7 @@ impl Scene {
                 offset_x: 0.0,
                 offset_y: 400.0,
                 animation: 0,
+                always_draw_animations: vec![],
                 frames: HashMap::new(),
                 font,
             });
@@ -174,6 +175,7 @@ impl Scene {
         print!("{} {:?}\n", "Done in".green(), end_time - start_time);
 
         Ok(Scene {
+            green_bg: false,
             bsv3,
             texture,
             timer: 0,
@@ -181,6 +183,7 @@ impl Scene {
             offset_x: 0.0,
             offset_y: 400.0,
             animation: 0,
+            always_draw_animations: vec![],
             frames: HashMap::new(),
             font,
         })
@@ -429,9 +432,9 @@ impl Scene {
         )
     }
 
-    fn get_index(&self) -> usize {
-        let start = self.bsv3.animations[self.animation].start as usize;
-        let end = self.bsv3.animations[self.animation].end as usize;
+    fn get_index_for_animation(&self, animation_id: usize) -> usize {
+        let start = self.bsv3.animations[animation_id].start as usize;
+        let end = self.bsv3.animations[animation_id].end as usize;
         let mut index = start;
         if start != end {
             index = start + self.timer % (end - start);
@@ -440,34 +443,60 @@ impl Scene {
         index
     }
 
+    fn get_index(&self) -> usize {
+        self.get_index_for_animation(self.animation)
+    }
+
+    fn draw_animation_group(&mut self, ctx: &mut Context, canvas: &Canvas, base_index: usize) {
+        if self.bsv3.format == 0x0303 {
+            // Collect reversed frame indices into a vector first (avoids borrowing)
+            let frames_to_draw = self.bsv3.groups[base_index]
+                .frames
+                .iter()
+                .rev() // Reverse the iterator
+                .copied()
+                .collect::<Vec<_>>();
+
+            for &frame_idx in &frames_to_draw {
+                self.draw_frame(
+                    ctx,
+                    canvas,
+                    self.bsv3.frames[frame_idx].clone(), // Or use frame directly if possible*
+                );
+            }
+        } else {
+            self.draw_frame(ctx, canvas, self.bsv3.frames[base_index].clone());
+        }
+    }
+
     fn draw(&mut self, ctx: &mut Context) -> Canvas {
         let canvas_width = CANVAS_SIZE;
         let canvas_height = CANVAS_SIZE;
         let mut canvas = Canvas::new(ctx, canvas_width as i32, canvas_height as i32).unwrap();
         canvas.set_filter_mode(ctx, FilterMode::Linear);
         graphics::set_canvas(ctx, &canvas);
-        if GREEN_BG {
+        if self.green_bg {
             graphics::clear(ctx, Color::rgba(0.4, 0.7333, 0.4, 0.0));
         } else {
             graphics::clear(ctx, Color::rgba(0.5, 0.5, 0.5, 0.0));
         }
-        graphics::set_canvas(ctx, &canvas);
 
-        let index = self.get_index();
+        // Precompute extra animations' indices
+        let mut draw_indices: Vec<usize> = vec![self.get_index()];
+        for &animation_id in &self.always_draw_animations {
+            let idx = self.get_index_for_animation(animation_id);
+            draw_indices.push(idx);
+        }
+
+        draw_indices.dedup();
+
+        // Iterate over precomputed indices (no borrow conflicts):
+        for &idx in &draw_indices {
+            self.draw_animation_group(ctx, &canvas, idx);
+        }
 
         self.timer += 1;
 
-        if self.bsv3.format == 0x0303 {
-            // loop over groups as they contain the frames for each animation frame
-            let mut frames = self.bsv3.groups[index].frames.clone();
-            frames.reverse();
-
-            for frame in frames.iter() {
-                self.draw_frame(ctx, &canvas, self.bsv3.frames[*frame].clone());
-            }
-        } else {
-            self.draw_frame(ctx, &canvas, self.bsv3.frames[index].clone());
-        }
         graphics::reset_canvas(ctx);
         graphics::reset_blend_state(ctx);
 
@@ -608,11 +637,35 @@ impl State for GameState {
             }
         }
 
+        if let Event::KeyReleased { key, .. } = event {
+            match key {
+                input::Key::F => {
+                    // Freeze/Unfreeze animation
+                    if self
+                        .scene
+                        .always_draw_animations
+                        .contains(&self.scene.animation)
+                    {
+                        self.scene
+                            .always_draw_animations
+                            .retain(|&x| x != self.scene.animation);
+                    } else {
+                        self.scene.always_draw_animations.push(self.scene.animation);
+                    }
+                }
+                input::Key::G => {
+                    // Toggle green background
+                    self.scene.green_bg = !self.scene.green_bg;
+                }
+                _ => {}
+            }
+        }
+
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> tetra::Result {
-        if GREEN_BG {
+        if self.scene.green_bg {
             graphics::clear(ctx, Color::rgb(0.4, 0.7333333333333, 0.4));
         } else {
             graphics::clear(ctx, Color::rgb(0.5, 0.5, 0.5));
@@ -668,13 +721,31 @@ impl State for GameState {
         for (index, animation) in self.scene.bsv3.animations.iter().enumerate() {
             if index == self.scene.animation {
                 text = format!(
-                    "{}\n({:03} - {:03}) [{}] {}",
-                    text, animation.start, animation.end, index, animation.name
+                    "{}\n({:03} - {:03}) {}[{}] {}",
+                    text,
+                    animation.start,
+                    animation.end,
+                    if self.scene.always_draw_animations.contains(&index) {
+                        "[X]"
+                    } else {
+                        "[ ]"
+                    },
+                    index,
+                    animation.name,
                 );
             } else {
                 text = format!(
-                    "{}\n({:03} - {:03}) {} {}",
-                    text, animation.start, animation.end, index, animation.name
+                    "{}\n({:03} - {:03}) {} {}  {}",
+                    text,
+                    animation.start,
+                    animation.end,
+                    if self.scene.always_draw_animations.contains(&index) {
+                        "[X]"
+                    } else {
+                        "[ ]"
+                    },
+                    index,
+                    animation.name,
                 );
             }
         }

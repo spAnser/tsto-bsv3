@@ -11,6 +11,8 @@
 2. Left click and drag to pan the image.
 3. Right click to cycle through animations.
 4. Mouse wheel to zoom in/out.
+5. Press `F` to freeze the current animation.
+6. Press `G` to toggle the background color between green and gray.
 
 ## Setup
 
