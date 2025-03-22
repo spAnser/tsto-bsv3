@@ -94,8 +94,14 @@ impl GameState {
     }
 }
 
+enum BGColor {
+    GREY,
+    GREEN,
+    BLUE,
+}
+
 struct Scene {
-    green_bg: bool,
+    bg_color: BGColor,
     bsv3: BSV3,
     texture: Texture,
     timer: usize,
@@ -112,7 +118,7 @@ impl Scene {
     fn new(ctx: &mut Context, file_path: &str, font: Font) -> Result<Scene, TetraError> {
         if file_path.is_empty() {
             return Ok(Scene {
-                green_bg: false,
+                bg_color: BGColor::GREY,
                 bsv3: BSV3::new(String::from("")),
                 texture: Texture::from_data(ctx, 0, 0, TextureFormat::R8, &*vec![])?,
                 timer: 0,
@@ -175,7 +181,7 @@ impl Scene {
         print!("{} {:?}\n", "Done in".green(), end_time - start_time);
 
         Ok(Scene {
-            green_bg: false,
+            bg_color: BGColor::GREY,
             bsv3,
             texture,
             timer: 0,
@@ -475,10 +481,16 @@ impl Scene {
         let mut canvas = Canvas::new(ctx, canvas_width as i32, canvas_height as i32).unwrap();
         canvas.set_filter_mode(ctx, FilterMode::Linear);
         graphics::set_canvas(ctx, &canvas);
-        if self.green_bg {
-            graphics::clear(ctx, Color::rgba(0.4, 0.7333, 0.4, 0.0));
-        } else {
-            graphics::clear(ctx, Color::rgba(0.5, 0.5, 0.5, 0.0));
+        match self.bg_color {
+            BGColor::GREY => {
+                graphics::clear(ctx, Color::rgba(0.5, 0.5, 0.5, 0.0));
+            }
+            BGColor::GREEN => {
+                graphics::clear(ctx, Color::rgba(0.4, 0.7333, 0.4, 0.0));
+            }
+            BGColor::BLUE => {
+                graphics::clear(ctx, Color::rgba(0.0, 0.5333, 0.8, 0.0));
+            }
         }
 
         // Precompute extra animations' indices
@@ -653,10 +665,17 @@ impl State for GameState {
                         self.scene.always_draw_animations.push(self.scene.animation);
                     }
                 }
-                input::Key::G => {
-                    // Toggle green background
-                    self.scene.green_bg = !self.scene.green_bg;
-                }
+                input::Key::B => match self.scene.bg_color {
+                    BGColor::GREY => {
+                        self.scene.bg_color = BGColor::GREEN;
+                    }
+                    BGColor::GREEN => {
+                        self.scene.bg_color = BGColor::BLUE;
+                    }
+                    BGColor::BLUE => {
+                        self.scene.bg_color = BGColor::GREY;
+                    }
+                },
                 _ => {}
             }
         }
@@ -665,10 +684,16 @@ impl State for GameState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> tetra::Result {
-        if self.scene.green_bg {
-            graphics::clear(ctx, Color::rgb(0.4, 0.7333333333333, 0.4));
-        } else {
-            graphics::clear(ctx, Color::rgb(0.5, 0.5, 0.5));
+        match self.scene.bg_color {
+            BGColor::GREY => {
+                graphics::clear(ctx, Color::rgb(0.5, 0.5, 0.5));
+            }
+            BGColor::GREEN => {
+                graphics::clear(ctx, Color::rgb(0.4, 0.7333, 0.4));
+            }
+            BGColor::BLUE => {
+                graphics::clear(ctx, Color::rgb(0.0, 0.5333, 0.8));
+            }
         }
 
         self.clip_canvas.draw(
